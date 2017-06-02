@@ -1,7 +1,7 @@
 import Foundation
 
 public class Script {
-  private var queue = DispatchQueue(label: "Script")
+  private var queue = DispatchQueue(label: "Script", qos: .background)
   private var state = ScriptState.idle
   private let path: String
   private let args: [String]
