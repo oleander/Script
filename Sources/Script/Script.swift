@@ -38,7 +38,7 @@ public class Script {
   }
 
   public func stop() {
-    self.synced { [weak self] in
+    synced { [weak self] in
       self?.set(state: .stopped)
     }
   }
@@ -49,7 +49,7 @@ public class Script {
   }
 
   public func start() {
-    self.synced { [weak self] in
+    synced { [weak self] in
       self?.set(state: .executing)
     }
   }
@@ -110,7 +110,6 @@ public class Script {
         err("Not running, nothing to terminate")
       }
 
-      /* RESET EVERYTHING */
       log("Reset everything")
     case (.finished, _):
       log("Script finished, IGNORE \(to)")
@@ -195,9 +194,7 @@ public class Script {
   @objc private func handleData() {
     log("Handle data called")
     synced { [weak self] in
-      guard let this = self else {
-        return print("not self, abort abort")
-      }
+      guard let this = self else { return }
       let data = this.handler.availableData
       this.buffer.append(data: data)
 
@@ -263,14 +260,12 @@ public class Script {
   @objc private func terminationHandler(_ process: Process) {
     log("called terminationHandler")
     synced { [weak self] in
-      if let this = self {
-        this.set(state:
-          .terminated(
-            process.terminationReason,
-            Int(process.terminationStatus)
-          )
+      self?.set(state:
+        .terminated(
+          process.terminationReason,
+          Int(process.terminationStatus)
         )
-      }
+      )
     }
   }
 
