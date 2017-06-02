@@ -57,6 +57,10 @@ public class Script {
     }
   }
 
+  public var isRunning: Bool {
+    return process.isRunning
+  }
+
   private func succeeded(_ data: String?, status: Int) {
     guard let result = data else {
       return log("No data to report")
@@ -158,15 +162,6 @@ public class Script {
     for line in self.buffer.reset() {
       succeeded(line, status: 0)
     }
-  }
-
-  var isRunning: Bool {
-    return process.isRunning
-  }
-
-  private var isDarkMode: Bool {
-    return UserDefaults.standard
-      .string(forKey: "AppleInterfaceStyle") == "Dark"
   }
 
   private var fileName: String {
