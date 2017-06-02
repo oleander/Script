@@ -57,6 +57,8 @@ func have(events: [ScriptEvent]) -> Predicate<(String, Bool, [ScriptAction])> {
           script.restart()
         case .stop:
           script.stop()
+        case .sleep:
+          sleep(2)
         case .start:
           script.start()
         }
@@ -117,27 +119,28 @@ func beAMisuse(with exp: String) -> Predicate<Script.Result> {
   }
 }
 
+func script(_ path: String, withArgs args: [String] = []) -> (String, [String]) {
+  return (toFile(path), args)
+}
+
+func code(_ code: String, withArgs args: [String] = []) -> (String, [String]) {
+  return (code, args)
+}
+
 func execute(path: String, args: [String] = [], autostart: Bool = true) -> (FakeScriptable, Script) {
   let delegate = FakeScriptable()
-  var realPath = path
-
-  // TODO: Solve this in a better way
-  if path.contains("echo") {
-    realPath = path
-  } else if path != "does-not-exist.sh" {
-    realPath = toFile(path).replace(" ", "\\ ")
-  }
-
-  let script = Script(path: realPath, args: args, delegate: delegate, autostart: autostart)
-  return (delegate, script)
+  return (
+    delegate,
+    Script(path: path, args: args, delegate: delegate, autostart: autostart)
+  )
 }
 
-func crash(with message: String) -> Predicate<String> {
-  return result(in: .fail(.crash(message)), message: "crash with \(message.inspected())")
+func crash(with message: String) -> Predicate<(String, [String])> {
+  return that(in: [.fail(.crash(message))], message: "crash with \(message.inspected())")
 }
 
-func crash(_ failure: Script.Failure) -> Predicate<String> {
-  return result(in: .fail(failure), message: "fail as not found")
+func crash(_ failure: Script.Failure) -> Predicate<(String, [String])> {
+  return that(in: [.fail(failure)], message: "fail as not found")
 }
 
 func lift<T, U>(_ that: Predicate<U>, block: @escaping (T) -> U) -> Predicate<T> {
@@ -171,15 +174,11 @@ func succeed(with messages: [String]) -> Predicate<(String, [String])> {
 }
 
 // expect(script).toEventually(exit(message: "output", andStatusCode: 2))
-func exit(with message: String, andStatusCode status: Int) -> Predicate<String> {
-  return result(
-    in: .fail(.exit(message, status)),
+func exit(with message: String, andStatusCode status: Int) -> Predicate<(String, [String])> {
+  return that(
+    in: [.fail(.exit(message, status))],
     message: "exit with output \(message.inspected()) and status code \(status)"
   )
-}
-
-func result(in expected: Std, message: String) -> Predicate<String> {
-  return lift(that(in: [expected], message: message)) { path in (path, []) }
 }
 
 func that(in expected: [Std], message: String) -> Predicate<(String, [String])> {

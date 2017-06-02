@@ -6,6 +6,7 @@ extension Script {
     case finished
     case eof
     case executing
+    case stopped
     case streaming
     case terminated(Process.TerminationReason, Int)
   }

@@ -1,7 +1,7 @@
 import Foundation
 
 public class Script {
-  private var queue = DispatchQueue(label: "Script")
+  private var queue = DispatchQueue(label: "Script", target: DispatchQueue.main)
   private var state = ScriptState.idle
   private let path: String
   private let args: [String]
@@ -34,25 +34,18 @@ public class Script {
     process.standardOutput = pipe
     process.standardError = errPipe
     process.terminationHandler = terminationHandler
-//      print(process.terminated)
-      // print("hello")
-
-    // }
     process.environment = currentEnv
   }
 
   public func stop() {
-    if process.isRunning {
-      process.terminate()
-    } else {
-      err("Not running, nothing to terminate")
+    self.synced { [weak self] in
+      self?.set(state: .stopped)
     }
   }
 
   public func restart() {
-    synced { [weak self] in
-      self?.set(state: .executing)
-    }
+    stop()
+    start()
   }
 
   public func start() {
@@ -76,14 +69,12 @@ public class Script {
 
     log("Succeeded with exit code \(status)")
 
-    sendInMain {
-      aDel.scriptDidReceive(
-        success: Success(
-          status: status,
-          output: result
-        )
+    aDel.scriptDidReceive(
+      success: Success(
+        status: status,
+        output: result
       )
-    }
+    )
   }
 
   private func listen() {
@@ -92,27 +83,37 @@ public class Script {
   }
 
   private func listenForStdOut() {
-    sendInMain {
-      self.handler.waitForDataInBackgroundAndNotify()
-    }
+    handler.waitForDataInBackgroundAndNotify()
   }
 
   private func listenForStdErr() {
-    sendInMain {
-      self.errHandler.waitForDataInBackgroundAndNotify()
-    }
+    errHandler.waitForDataInBackgroundAndNotify()
   }
 
   private func startProcess() {
-    sendInMain {
-      self.process.launch()
+    log("Starting process in main thread")
+
+    if isRunning {
+      return log("Already running, nothing to start")
     }
+
+    process.launch()
   }
 
   private func set(state to: ScriptState) {
     switch (state, to) {
-    case (.finished, .eof):
-      log("EOF on finish (finished => EOF => finished)")
+    case (_, .stopped):
+      log("Terminating script using .finished")
+      if process.isRunning {
+        process.terminate()
+      } else {
+        err("Not running, nothing to terminate")
+      }
+
+      /* RESET EVERYTHING */
+      log("Reset everything")
+    case (.finished, _):
+      log("Script finished, IGNORE \(to)")
     case (.eof, .eof):
       log("EOF on EOF (EOF => EOF)")
     case (.idle, .executing):
@@ -127,21 +128,11 @@ public class Script {
       log("Terminating => streaming")
       handleStream()
       lockdown(reason: reason, status: status)
-    case (_, .executing):
-      log("[X] Script is running, terminating (\(state) => executing)")
-      stop()
-      reset()
-      start()
-    case (_, .finished):
-      fail("Can't set finished manually")
     case (.streaming, .streaming):
       log("[X] Script is streaming (streaming => streaming")
       handleStream()
     case (.executing, .streaming):
       log("[X] Script is streaming (executing => streaming")
-      handleStream()
-    case (.finished, .streaming):
-      log("Script is finished but got streaming. (finished => streaming => finished)")
       handleStream()
     case let (.streaming, .terminated(.exit, status)):
       log("Terminating streaming script (streaming => terminated), waiting for EOF")
@@ -165,6 +156,24 @@ public class Script {
       log("Terminating streaming script (streaming => terminated), waiting for EOF")
       handleStream()
       lockdown(reason: reason, status: status)
+    case (.stopped, .terminated):
+      log("Ignored forced stop")
+    case (.terminated, .executing):
+      log("Kickstarting (2) finished script (reset => listen => startProcess)")
+      reset()
+      listen()
+      startProcess()
+    case (_, .executing):
+      log("Restarting running script")
+      if process.isRunning {
+        process.terminate()
+      } else {
+        err("Not running (2), nothing to terminate")
+      }
+
+      reset()
+      listen()
+      startProcess()
     default:
       err("Invalid state (\(state) => \(to))")
     }
@@ -180,9 +189,7 @@ public class Script {
     }
 
     err("Failed with error message: '\(message)'")
-    sendInMain {
-      delegate.scriptDidReceive(failure: message)
-    }
+    delegate.scriptDidReceive(failure: message)
   }
 
   @objc private func handleData() {
@@ -248,7 +255,6 @@ public class Script {
   }
 
   private var currentErrBuffer: String {
-    // errBuffer.append(data: errHandler.availableData)
     let out = errBuffer.toString()
     errBuffer.clear()
     return out
@@ -276,12 +282,12 @@ public class Script {
     return (0..<args.count).map { "\"$" + String($0) + "\"" }
   }
 
-  private func quote(_ a: String) -> String {
-    return "\"" + a + "\""
+  private func escape(_ string: String) -> String {
+    return string.replace("'", "\\'").replace("\"", "\\\"")
   }
 
   private var arguments: [String] {
-    let run = ["-c", (path + " " + namedArgs.joined(separator: " "))] + args
+    let run = ["-c", (escape(path) + " " + namedArgs.joined(separator: " "))] + args
     log("Example ~; bash " + run.joined(separator: " "))
     return run
   }
@@ -292,6 +298,8 @@ public class Script {
     switch (reason, status) {
     case (.exit, 0):
       succeeded(currentBuffer, status: 0)
+    case (.uncaughtSignal, 15):
+      log("Forced termination, ignore")
     case (.exit, 2):
       failed(.misuse(currentErrBuffer))
     case (.exit, 126):
@@ -300,19 +308,17 @@ public class Script {
       failed(.notFound)
     case let (.exit, code):
       failed(.exit(currentErrBuffer, code))
-    case (.uncaughtSignal, 15):
-      failed(.terminated)
     case let (.uncaughtSignal, code):
       failed(.exit(currentErrBuffer, code))
     }
   }
 
   private func log(_ msg: String) {
-    print("warninxg: [Log] '\(fileName) => \(state)' \(msg)")
+    print("Xwarning: [Log] '\(fileName) => \(state)' \(msg)")
   }
 
   private func err(_ msg: String) {
-    print("warninxg: [Err] '\(fileName) => \(state)' \(msg)")
+    print("Xwarning: [Err] '\(fileName) => \(state)' \(msg)")
   }
 
   private func fail(_ msg: String) -> Never {
@@ -342,46 +348,27 @@ public class Script {
       name: .NSFileHandleDataAvailable,
       object: errHandler
     )
-
-    // center.addObserver(
-    //   self,
-    //   selector: #selector(terminationHandler),
-    //   name:  Process.didTerminateNotification,
-    //   object: process
-    // )
-
-    // center.addObserver(forName: Process.didTerminateNotification, object: process, queue: nil, using: terminationHandler)
   }
 
   private func reset() {
-    log("Calling [RESET]")
+    process = Process()
     pipe = Pipe()
     handler = pipe.fileHandleForReading
     errPipe = Pipe()
     errHandler = errPipe.fileHandleForReading
-    process = Process()
     buffer = Buffer()
     errBuffer = Buffer()
-    state = .idle
+    setObs()
     process.launchPath = bashPath
     process.arguments = arguments
     process.environment = currentEnv
     process.standardOutput = pipe
     process.standardError = errPipe
     process.terminationHandler = terminationHandler
-    // process.terminationHandler = terminationHandler
-    setObs()
+    process.environment = currentEnv
   }
 
   @objc private func synced(closure: @escaping () -> Void) {
-    queue.sync { closure() }
-    // closure()
-    // closure()
-  }
-
-  private func sendInMain(block: @escaping () -> Void) {
-    DispatchQueue.main.async { block() }
-    // block()
-    // block()
+    queue.async { closure() }
   }
 }
