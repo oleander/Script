@@ -1,5 +1,5 @@
 extension Script {
-  enum Failure: CustomStringConvertible {
+  public enum Failure: CustomStringConvertible {
     case crash(String)
     case exit(String, Int)
     case misuse(String)

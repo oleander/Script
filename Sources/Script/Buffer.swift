@@ -1,5 +1,7 @@
 import Foundation
 
+typealias CRange = CountableClosedRange<Int>
+
 class Buffer {
   enum NotFound: Error {
     case noLocation

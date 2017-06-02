@@ -1,7 +1,6 @@
 import Foundation
-typealias CRange = CountableClosedRange<Int>
 
-class Script {
+public class Script {
   private var queue = DispatchQueue(label: "Script")
   private var state = ScriptState.idle
   private let path: String
@@ -16,24 +15,15 @@ class Script {
   private let bashPath = "/bin/bash"
   private let center = NotificationCenter.default
   private let bundle = Bundle.main
-  internal weak var delegate: ScriptDelegate?
+  private weak var delegate: Scriptable?
 
-  private enum ScriptState {
-    case idle
-    case finished
-    case eof
-    case executing
-    case streaming
-    case terminated(Process.TerminationReason, Int)
-  }
-
-  convenience init(path: String, args: [String] = [], delegate: ScriptDelegate, autostart: Bool = false) {
+  public convenience init(path: String, args: [String] = [], delegate: Scriptable, autostart: Bool = false) {
     self.init(path: path, args: args)
     self.delegate = delegate
     if autostart { start() }
   }
 
-  init(path: String, args: [String] = []) {
+  public init(path: String, args: [String] = []) {
     self.path = path
     self.args = args
     handler = pipe.fileHandleForReading

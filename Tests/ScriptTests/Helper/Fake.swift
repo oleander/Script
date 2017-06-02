@@ -1,6 +1,6 @@
 @testable import Script
 
-class FakeScriptable: ScriptDelegate {
+class FakeScriptable: Scriptable {
   var result = [Std]()
 
   init() {}
