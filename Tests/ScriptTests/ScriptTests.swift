@@ -156,5 +156,11 @@ class ScriptTests: QuickSpec {
         }
       }
     }
+
+    context("fail") {
+      it("works") {
+        expect("hello.10m.sh".withArgs(["ABC", "DEF"])).toEventually(succeed(with: "ABC DEF\n"))
+      }
+    }
   }
 }

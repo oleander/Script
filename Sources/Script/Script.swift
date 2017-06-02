@@ -1,7 +1,7 @@
 import Foundation
 
 public class Script {
-  private var queue = DispatchQueue(label: "Script", qos: .background)
+  private var queue = DispatchQueue(label: "Script")
   private var state = ScriptState.idle
   private let path: String
   private let args: [String]
@@ -28,13 +28,17 @@ public class Script {
     self.args = args
     handler = pipe.fileHandleForReading
     errHandler = errPipe.fileHandleForReading
+    setObs()
     process.launchPath = bashPath
     process.arguments = arguments
     process.standardOutput = pipe
     process.standardError = errPipe
     process.terminationHandler = terminationHandler
+//      print(process.terminated)
+      // print("hello")
+
+    // }
     process.environment = currentEnv
-    setObs()
   }
 
   public func stop() {
@@ -46,14 +50,14 @@ public class Script {
   }
 
   public func restart() {
-    synced(self) {
-      self.set(state: .executing)
+    synced { [weak self] in
+      self?.set(state: .executing)
     }
   }
 
   public func start() {
-    synced(self) {
-      self.set(state: .executing)
+    self.synced { [weak self] in
+      self?.set(state: .executing)
     }
   }
 
@@ -72,12 +76,37 @@ public class Script {
 
     log("Succeeded with exit code \(status)")
 
-    aDel.scriptDidReceive(
-      success: Success(
-        status: status,
-        output: result
+    sendInMain {
+      aDel.scriptDidReceive(
+        success: Success(
+          status: status,
+          output: result
+        )
       )
-    )
+    }
+  }
+
+  private func listen() {
+    listenForStdOut()
+    listenForStdErr()
+  }
+
+  private func listenForStdOut() {
+    sendInMain {
+      self.handler.waitForDataInBackgroundAndNotify()
+    }
+  }
+
+  private func listenForStdErr() {
+    sendInMain {
+      self.errHandler.waitForDataInBackgroundAndNotify()
+    }
+  }
+
+  private func startProcess() {
+    sendInMain {
+      self.process.launch()
+    }
   }
 
   private func set(state to: ScriptState) {
@@ -88,8 +117,8 @@ public class Script {
       log("EOF on EOF (EOF => EOF)")
     case (.idle, .executing):
       log("Starting to execute script (idle => executing)")
-      process.launch()
-      handler.waitForDataInBackgroundAndNotify()
+      listen()
+      startProcess()
     case let (.terminated(.exit, status), .streaming):
       log("Terminated script is set to stream. Mark as terminated and report stream (terminated => streaming => terminated")
       handleStream()
@@ -140,6 +169,8 @@ public class Script {
       err("Invalid state (\(state) => \(to))")
     }
 
+    log("Change state from '\(state)' to '\(to)'")
+
     self.state = to
   }
 
@@ -149,17 +180,55 @@ public class Script {
     }
 
     err("Failed with error message: '\(message)'")
-    delegate.scriptDidReceive(failure: message)
+    sendInMain {
+      delegate.scriptDidReceive(failure: message)
+    }
   }
 
   @objc private func handleData() {
-    synced(self) {
-      self.processData()
+    log("Handle data called")
+    synced { [weak self] in
+      guard let this = self else {
+        return print("not self, abort abort")
+      }
+      let data = this.handler.availableData
+      this.buffer.append(data: data)
+
+      if this.buffer.isFinish() {
+        this.set(state: .streaming)
+      }
+
+      if data.isEOF() {
+        this.set(state: .eof)
+      }
+
+      if !data.isEOF() {
+        this.log("more data migth exsit")
+        this.listenForStdOut()
+      } else {
+        this.log("EOF, wont call waitForDataInBackgroundAndNotify")
+      }
+    }
+  }
+
+  @objc private func handleErrData() {
+    log("Handle ERR data called")
+    synced { [weak self] in
+      guard let this = self else {
+        return
+      }
+
+      let data2 = this.errHandler.availableData
+      this.errBuffer.append(data: data2)
+
+      if !data2.isEOF() {
+        this.listenForStdErr()
+      }
     }
   }
 
   private func handleStream() {
-    for line in self.buffer.reset() {
+    for line in buffer.reset() {
       succeeded(line, status: 0)
     }
   }
@@ -179,44 +248,23 @@ public class Script {
   }
 
   private var currentErrBuffer: String {
-    errBuffer.append(data: errHandler.availableData)
+    // errBuffer.append(data: errHandler.availableData)
     let out = errBuffer.toString()
     errBuffer.clear()
     return out
   }
 
-  private func processData() {
-    let data = handler.availableData
-    buffer.append(data: data)
-
-    if buffer.isFinish() {
-      set(state: .streaming)
-    }
-
-    if data.isEOF() {
-      set(state: .eof)
-    }
-
-    if !data.isEOF() {
-      handler.waitForDataInBackgroundAndNotify()
-    }
-
-    let data2 = errHandler.availableData
-    errBuffer.append(data: data2)
-
-    if !data2.isEOF() {
-      errHandler.waitForDataInBackgroundAndNotify()
-    }
-  }
-
-  private func terminationHandler(_ process: Process) {
-    synced(self) {
-      self.set(state:
-        .terminated(
-          self.process.terminationReason,
-          Int(self.process.terminationStatus)
+  @objc private func terminationHandler(_ process: Process) {
+    log("called terminationHandler")
+    synced { [weak self] in
+      if let this = self {
+        this.set(state:
+          .terminated(
+            process.terminationReason,
+            Int(process.terminationStatus)
+          )
         )
-      )
+      }
     }
   }
 
@@ -281,16 +329,32 @@ public class Script {
   }
 
   private func setObs() {
-    center.removeObserver(self)
     center.addObserver(
       self,
       selector: #selector(handleData),
       name: .NSFileHandleDataAvailable,
       object: handler
     )
+
+    center.addObserver(
+      self,
+      selector: #selector(handleErrData),
+      name: .NSFileHandleDataAvailable,
+      object: errHandler
+    )
+
+    // center.addObserver(
+    //   self,
+    //   selector: #selector(terminationHandler),
+    //   name:  Process.didTerminateNotification,
+    //   object: process
+    // )
+
+    // center.addObserver(forName: Process.didTerminateNotification, object: process, queue: nil, using: terminationHandler)
   }
 
   private func reset() {
+    log("Calling [RESET]")
     pipe = Pipe()
     handler = pipe.fileHandleForReading
     errPipe = Pipe()
@@ -305,11 +369,19 @@ public class Script {
     process.standardOutput = pipe
     process.standardError = errPipe
     process.terminationHandler = terminationHandler
+    // process.terminationHandler = terminationHandler
     setObs()
   }
 
-  // TODO: remove lock
-  @objc private func synced(_ lock: Any, closure: @escaping () -> Void) {
+  @objc private func synced(closure: @escaping () -> Void) {
     queue.sync { closure() }
+    // closure()
+    // closure()
+  }
+
+  private func sendInMain(block: @escaping () -> Void) {
+    DispatchQueue.main.async { block() }
+    // block()
+    // block()
   }
 }
