@@ -15,7 +15,7 @@ public class Script {
   private let bashPath = "/bin/bash"
   private let center = NotificationCenter.default
   private let bundle = Bundle.main
-  private weak var delegate: Scriptable?
+  public weak var delegate: Scriptable?
 
   public convenience init(path: String, args: [String] = [], delegate: Scriptable, autostart: Bool = false) {
     self.init(path: path, args: args)
