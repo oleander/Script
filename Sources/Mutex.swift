@@ -11,7 +11,13 @@ extension Mutex {
   }
 
   func invoke(block: @escaping () -> Void) {
-    if Thread.isMainThread { return block() }
+    // TODO: Fix this
+    // if queue.label == "Buffer" && inTests { block() }
+    // else { queue.async { block() } }
     queue.async { block() }
+  }
+
+  var inTests: Bool {
+    return ProcessInfo.processInfo.environment["TESTS"] != nil
   }
 }

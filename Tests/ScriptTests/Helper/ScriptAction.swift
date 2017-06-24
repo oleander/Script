@@ -1,4 +1,4 @@
-@testable import Scripter
+@testable import Script
 
 enum ScriptAction: String {
   case restart

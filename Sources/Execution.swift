@@ -206,9 +206,9 @@ public class Execution: Log, Mutex {
     //   ))
     // }
 
-    guard !isPublished else {
-      return log("Already published, ignoring: \(state)")
-    }
+    // guard !isPublished else {
+    //   return log("Already published, ignoring: \(state)")
+    // }
 
     switch normalizedOutput {
     case let .failed(result):

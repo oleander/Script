@@ -1,4 +1,4 @@
-@testable import Scripter
+@testable import Script
 
 class FakeScriptable: Scriptable {
   var result = [Std]()

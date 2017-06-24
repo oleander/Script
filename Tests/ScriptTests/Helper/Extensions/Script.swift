@@ -1,4 +1,4 @@
-@testable import Scripter
+@testable import Script
 
 extension Script.Result: Equatable {
   public static func == (lhs: Script.Result, rhs: Script.Result) -> Bool {

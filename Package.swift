@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Scripter",
+    name: "Script",
     dependencies: [
     .Package(url: "https://github.com/Quick/Quick.git", "1.1.0"),
     .Package(url: "https://github.com/Quick/Nimble.git", "7.0.0"),

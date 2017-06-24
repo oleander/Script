@@ -2,7 +2,7 @@ import Quick
 import Nimble
 import Foundation
 import HeliumLogger
-@testable import Scripter
+@testable import Script
 
 class ScriptTests: QuickSpec {
   override func spec() {
@@ -79,7 +79,7 @@ class ScriptTests: QuickSpec {
           expect(script("stream-nomore.sh")).toEventually(succeed(withPiece: "A\n"))
         }
 
-        fit("handles more then one") {
+        it("handles more then one") {
           expect(script("stream-more.sh")).toEventually(succeed(withPieces: ["A\n", "B\n"]))
         }
 

@@ -1,10 +1,10 @@
-@testable import Scripter
+@testable import Script
 
 import PathKit
 import Foundation
 import Nimble
 
-let rootPath = Path(FileManager.default.currentDirectoryPath) + Path("Tests/ScripterTests/Scripts")
+let rootPath = Path(FileManager.default.currentDirectoryPath) + Path("Tests/ScriptTests/Scripts")
 func toFile(_ path: String) -> String {
   return (rootPath + Path(path)).string
 }

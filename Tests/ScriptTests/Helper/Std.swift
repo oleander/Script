@@ -1,4 +1,4 @@
-@testable import Scripter
+@testable import Script
 
 enum Std: Equatable, CustomStringConvertible {
   case succ(Script.Success)

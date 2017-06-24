@@ -1,4 +1,4 @@
-@testable import Scripter
+@testable import Script
 
 enum ScriptEvent: Equatable {
   case termination
