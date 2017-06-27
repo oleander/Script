@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'Script'
-  s.version          = '3.0.0'
+  s.version          = '3.0.1'
   s.summary          = 'Run bash script from Swift'
   s.description      = 'Run bash script from within Swift'
   s.homepage         = 'https://github.com/oleander/Script'
