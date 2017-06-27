@@ -13,6 +13,5 @@ extension Script {
         return false
       }
     }
-
   }
 }

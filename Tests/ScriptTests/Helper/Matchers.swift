@@ -35,7 +35,6 @@ func verify<T>(_ message: String, block: @escaping (T) -> State) -> Predicate<T>
   }
 }
 
-
 func toSucc(_ output: String) -> Std {
   return .succ(.withZeroExitCode(output))
 }
@@ -80,9 +79,10 @@ func have(events: [ScriptEvent]) -> Predicate<(String, Bool, [ScriptAction])> {
 
     if newEvents == events {
       script.stop()
+      return .bool(true, newEvents)
     }
 
-    return .bool(newEvents == events, newEvents)
+    return .bool(false, newEvents)
   }
 }
 

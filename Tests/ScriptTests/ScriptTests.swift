@@ -8,7 +8,7 @@ class ScriptTests: QuickSpec {
   override func spec() {
     beforeEach {
       // HeliumLogger.load()
-      Nimble.AsyncDefaults.Timeout = 5
+      Nimble.AsyncDefaults.Timeout = 4
     }
 
     describe("stdout") {
@@ -89,6 +89,12 @@ class ScriptTests: QuickSpec {
 
         it("handles sleep") {
           expect(script("stream-sleep.sh")).toEventually(succeed(withPieces: ["A\n", "B\n"]))
+        }
+      }
+
+      describe("sleep, no stream") {
+        it("handles sleep") {
+          expect(script("sleep-no-stream.sh")).toEventually(succeed(with: "ABC\nDEF\nGHI\n"))
         }
       }
     }
@@ -179,6 +185,14 @@ class ScriptTests: QuickSpec {
 
         it("should handle sequence ending with 'stop'") {
           expect(("sleep.sh", true, [.start, .stop, .restart, .start, .stop, .restart])).toEventually(have(events: [.success]))
+        }
+      }
+    }
+
+    describe("loop") {
+      for i in 0...50 {
+        it("handles request: \(i)") {
+          expect(script("random-sleep.sh")).toEventually(succeed(withPieces: ["A\n", "B\n", "C\n"]))
         }
       }
     }

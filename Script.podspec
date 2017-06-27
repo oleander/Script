@@ -9,4 +9,6 @@ Pod::Spec.new do |s|
   s.source           = { git: 'https://github.com/oleander/Script.git', tag: s.version.to_s }
   s.platform         = :osx, '10.10'
   s.source_files     = 'Sources'
+  s.exclude_files    = 'Tests', 'Package.swift', 'Package.pins'
+  s.dependency 'AsyncSwift'
 end

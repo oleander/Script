@@ -9,24 +9,20 @@ struct CurrentState {
     return has(.started)
   }
 
-  public var isStderrClosed: Bool {
-    return has(.stderrClosed)
-  }
-
-  public var isStdoutStreaming: Bool {
-    return has(.stdoutStreaming)
-  }
-
-  public var isStderrStreaming: Bool {
-    return has(.stderrStreaming)
+  public var isManuallyTerminated: Bool {
+    return has(.manualTermination)
   }
 
   public var isPublished: Bool {
     return has(.published)
   }
 
-  public var isStdoutClosed: Bool {
-    return has(.stdoutClosed)
+  public var isClosed: Bool {
+    return has(.closed)
+  }
+
+  public var isStream: Bool {
+    return has(.stream)
   }
 
   public var isTerminated: Bool {

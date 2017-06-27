@@ -1,35 +1,35 @@
 import Foundation
 
-class Buffer: Mutex, Log {
+class Buffer {
   private static let defaultDelimiter = "~~~\n"
-  internal let queue = Buffer.new(queue: "Buffer")
   private var store = Data()
   private var rest = Data()
   private var isEmpty: Bool { return store.isEmpty }
   private var isClosed = false
   private var isStreamable = false
   private let delimiter: String
-  internal let id: Int
+
+  public var isStream = false
 
   init(withDelimiter delimiter: String = Buffer.defaultDelimiter, id: Int = -1) {
     self.delimiter = delimiter
-    self.id = id
   }
 
   public func append(_ data: Data) {
-    invoke { [weak self] in
-      guard let this = self else { return }
-      guard !this.isClosed else { return }
-      this.store.append(data)
-      this.rest.append(data)
-    }
+    store.append(data)
+    // TODO
+    // rest.append(data)
   }
 
   public func toString() -> String {
     return store.string ?? ""
   }
 
-  public func close()  {
+  public func clearMainBuffer() {
+    rest = Data()
+  }
+
+  public func close() {
     isClosed = true
   }
 
@@ -37,32 +37,23 @@ class Buffer: Mutex, Log {
     return store.string
   }
 
-  public var everything: String? {
+  public func everything() throws -> String? {
+    if isStream { throw BufferError.isStream }
     return rest.string
   }
 
-  public func output(block: @escaping ([String]) -> Void) {
-    invoke { [weak self] in
-      guard let this = self else { return print("[Log] Buffer has been deallocated") }
-      guard let items = try? this.nonThreadSafeOutput() else {
-        return this.err("Could not get items from buffer")
-      }
-
-      block(items)
-    }
+  public var tilTheEnd: [String] {
+    if store.isEmpty { return [] }
+    guard let remaining = store.string else { return [] }
+    if remaining.isEmpty { return [] }
+    return [remaining]
   }
 
-  public func tilTheEnd(block: @escaping ([String]) -> Void) {
-    invoke { [weak self] in
-      guard let this = self else { return print("[LOG] Buffer has been deallocated") }
-      guard let rem = this.store.string else { return }
-      guard !rem.isEmpty else { return }
-      block([rem])
-    }
+  public var output: [String] {
+    return recursiveOutput()
   }
 
-  private func nonThreadSafeOutput() throws -> [String] {
-    if isClosed { throw BufferError.alreadyClosed }
+  private func recursiveOutput() -> [String] {
     if isEmpty { return [] }
 
     guard var newString = string else { return [] }
@@ -76,11 +67,10 @@ class Buffer: Mutex, Log {
     }
 
     store = newStore
-    let newRest = try nonThreadSafeOutput()
-    let ress = [newOutput] + newRest
+    let items = [newOutput] + recursiveOutput()
 
-    guard isClosed else { return ress }
-    guard let rem = self.store.string else { return ress }
-    return ress + [rem]
+    guard isClosed else { return items }
+    guard let remaining = store.string else { return items }
+    return items + [remaining]
   }
 }

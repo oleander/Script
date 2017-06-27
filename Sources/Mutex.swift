@@ -1,4 +1,5 @@
 import Foundation
+import Async
 
 protocol Mutex {
   var queue: DispatchQueue { get }
@@ -6,18 +7,13 @@ protocol Mutex {
 }
 
 extension Mutex {
-  static func new(queue label: String) -> DispatchQueue {
-    return DispatchQueue(label: label, qos: .background, target: .main)
+  static func new(queue label: String, qos: DispatchQoS = .utility) -> DispatchQueue {
+    return DispatchQueue(label: label, qos: qos, target: .main)
   }
 
   func invoke(block: @escaping () -> Void) {
-    // TODO: Fix this
-    // if queue.label == "Buffer" && inTests { block() }
-    // else { queue.async { block() } }
+    if Thread.isMainThread { return block() }
     queue.async { block() }
-  }
-
-  var inTests: Bool {
-    return ProcessInfo.processInfo.environment["TESTS"] != nil
+    // Async.custom(queue: queue) { block() }
   }
 }

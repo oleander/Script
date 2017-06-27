@@ -10,4 +10,8 @@ extension String {
   func remove(_ what: String) -> String {
     return replace(what, "")
   }
+
+  func split(_ with: String) -> [String] {
+    return components(separatedBy: with)
+  }
 }

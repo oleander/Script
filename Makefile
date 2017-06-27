@@ -1,10 +1,11 @@
-export TESTS=1
-
 default: test
 install:
 	gem install xcpretty
 test:
-	swift test 2>&1 | xcpretty
+	mkdir -p .build
+	rm -f .build/log
+	touch .build/log
+	swift test 2>&1 | tee -a .build/log 2>&1 | xcpretty
 lint:
 	pod lib lint
 clean:

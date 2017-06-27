@@ -2,7 +2,7 @@
 // import HeliumLogger
 
 protocol Log {
-  var id: Int { get }
+  var id: String { get }
   func log(_ msg: String)
   func err(_ msg: String)
 }
@@ -10,11 +10,11 @@ protocol Log {
 extension Log {
   internal func log(_ msg: String) {
     // LoggerAPI.Log.warning("[\(id)] " + msg)
-    print("[LOG\(id)] " + msg)
+    // print("[LOG:\(id)] " + msg)
   }
 
   internal func err(_ msg: String) {
-    print("[ERR:\(id)] " + msg)
+    // print("[ERR:\(id)] " + msg)
     // LoggerAPI.Log.error("[\(id)] " + msg)
   }
 }

@@ -1,20 +1,17 @@
 import Foundation
+import Async
 
-public class Execution: Log, Mutex {
-  internal let queue = Execution.new(queue: "Execution")
-  public var isStdoutStreaming: Bool { return state.isStdoutStreaming }
-  public var isStderrStreaming: Bool { return state.isStderrStreaming }
-
+public class Execution: Log {
   public typealias Failure = (Script.Failure) -> Void
   public typealias Success = (Script.Success) -> Void
 
   private let args: [String]
   private var state = CurrentState()
-  private let center = NotificationCenter.default
   private var isStarted: Bool { return state.isStarted }
   private var isPublished: Bool { return state.isPublished }
   private var isTerminated: Bool { return state.isTerminated }
   private var isCompleted: Bool { return state.isCompleted }
+  private var isManuallyTerminated: Bool { return state.isManuallyTerminated }
   private var stdoutCallbacks = [Success]()
   private var stderrCallbacks = [Failure]()
   private var streamedStderrCallbacks = [(String) -> Void]()
@@ -24,19 +21,15 @@ public class Execution: Log, Mutex {
   private let process = Process()
   private let stdoutPipe = Pipe()
   private let stderrPipe = Pipe()
-  private let stdout: FileHandle
-  private let stderr: FileHandle
-  private var stdoutBuffer = Buffer()
-  private var stderrBuffer = Buffer()
+  private var stdout: Handler?
+  private var stderr: Handler?
   private let path: String
-  internal let id: Int
+  internal let id: String
 
-  public init(path: String, args: [String] = [], id: Int) {
-    self.id = id
-    self.stdout = stdoutPipe.fileHandleForReading
-    self.stderr = stderrPipe.fileHandleForReading
+  public init(path: String, args: [String] = [], id: String) {
     self.args = args
     self.path = path
+    self.id = id
 
     process.launchPath = bashPath
     process.arguments = arguments
@@ -44,70 +37,45 @@ public class Execution: Log, Mutex {
     process.standardOutput = stdoutPipe
     process.standardError = stderrPipe
 
-    invoke { [weak self] in
-      self?.stdout.readabilityHandler = { [weak self] handle in
-        guard let this = self else {
-          return print("[Log] Execution(std) handler has already been relased")
-        }
+    self.stdout = Handler(stdoutPipe.fileHandleForReading)
+    self.stderr = Handler(stderrPipe.fileHandleForReading)
 
-        let data = handle.availableData
-
-        if data.isEOF {
-          return this.set(state: .stdoutClosed)
-        }
-
-        this.stdoutBuffer.append(data)
-        this.stdoutBuffer.output() { [weak self] items in
-          guard let this = self else { return }
-
-          if !items.isEmpty {
-            this.set(state: .stdoutStreaming)
-          }
-
-          for output in items {
-            for callback in this.streamedStdoutCallbacks {
-              callback(output)
-            }
-          }
-        }
-      }
-
-      self?.stderr.readabilityHandler = { [weak self] handle in
-        guard let this = self else {
-          return print("[Log] Execution(err) handler has already been relased")
-        }
-
-        let data = handle.availableData
-
-        if data.isEOF {
-          return this.set(state: .stderrClosed)
-        }
-
-        this.stderrBuffer.append(data)
-        this.stderrBuffer.output() { [weak self] items in
-          guard let this = self else { return }
-
-          if !items.isEmpty {
-            this.set(state: .stderrStreaming)
-          }
-
-          for output in items {
-            for callback in this.streamedStderrCallbacks {
-              callback(output)
-            }
-          }
-        }
-      }
-
-      self?.process.terminationHandler = { [weak self] _ in
-        guard let this = self else {
-          return print("[LOG] Execution has already been deallocated")
-        }
-
-        this.log("Script has been terminated")
-        this.set(state: .terminated)
+    self.stdout?.onPiece { [weak self] piece in
+      for callback in (self?.streamedStdoutCallbacks ?? []) {
+        callback(piece)
       }
     }
+
+    self.stderr?.onPiece { [weak self] piece in
+      for callback in (self?.streamedStderrCallbacks ?? []) {
+        callback(piece)
+      }
+    }
+
+    self.stderr?.onTermination { [weak self] in
+      self?.set(state: .stderrCompleted)
+    }
+
+    self.stdout?.onTermination { [weak self] in
+      self?.set(state: .stdoutCompleted)
+    }
+
+    process.terminationHandler = { [weak self] process in
+      process.terminationHandler = nil
+
+      switch (process.terminationReason, process.terminationStatus) {
+      case (.exit, _):
+        self?.set(state: .terminated)
+      case (.uncaughtSignal, 15):
+        self?.manualTermination()
+      case (.uncaughtSignal, _):
+        self?.set(state: .terminated)
+      }
+    }
+  }
+
+  public func manualTermination() {
+    set(state: .manualTermination)
   }
 
   public func onFailure(callback: @escaping Failure) {
@@ -134,22 +102,35 @@ public class Execution: Log, Mutex {
     return process.isRunning
   }
 
-  public func terminate() throws {
-    guard isStarted else { throw RuntimeError.notRunning }
-    guard isRunning else { throw RuntimeError.notRunning }
-    if isTerminated { throw RuntimeError.alreadyTerminated }
-    if isCompleted { throw RuntimeError.alreadyCompleted }
+  public func terminate() {
+    log("Called #terminate")
 
-    process.terminate()
+    if isManuallyTerminated {
+      return log("Already manually terminated")
+    }
+
+    set(state: .manualTermination)
+    close()
+
+    if isRunning {
+      process.terminate()
+    }
   }
 
-  public func run() throws {
-    if isStarted { throw RuntimeError.alreadyStarted }
+  public func run() {
+    if isStarted { return }
+    set(state: .started)
+    process.launch()
+  }
 
-    invoke { [weak self] in
-      self?.set(state: .started)
-      self?.process.launch()
-    }
+  public func clear() {
+    stdout?.clear()
+    stderr?.clear()
+  }
+
+  public func close() {
+    stderr?.close()
+    stdout?.close()
   }
 
   private func set(state other: State) {
@@ -157,64 +138,33 @@ public class Execution: Log, Mutex {
     state.update(state: other)
 
     switch other {
-    case .stderrClosed:
-      stderrBuffer.close()
-      stderr.readabilityHandler = nil
-    case .stdoutClosed:
-      stdoutBuffer.close()
-      stdout.readabilityHandler = nil
-    case .terminated:
-      process.terminationHandler = nil
+    case .manualTermination:
+      close()
     default:
       break
     }
 
-    publish()
-  }
-
-  private func publish() {
-    guard isTerminated else {
-      return log("Script has not terminated yet")
+    guard isCompleted else {
+      return log("Not completed: \(state)")
     }
 
-    if isStdoutStreaming {
-      stdoutBuffer.tilTheEnd() { [weak self] items in
-        for output in items {
-          for callback in (self?.streamedStdoutCallbacks ?? []) {
-            callback(output)
-          }
-        }
-      }
+    guard !isPublished else {
+      return log("Already published")
     }
 
-    if isStderrStreaming {
-      stderrBuffer.tilTheEnd() { [weak self] items in
-        for output in items {
-          for callback in (self?.streamedStderrCallbacks ?? []) {
-            callback(output)
-          }
-        }
-      }
+    if isManuallyTerminated {
+      return log("Process is manually terminated, ignore #publish")
     }
-
-    // for callback in terminationCallbacks {
-    //   callback((
-    //     process.terminationReason,
-    //     Int(process.terminationStatus),
-    //     stderrBuffer.everything ?? "",
-    //     stdoutBuffer.everything ?? ""
-    //   ))
-    // }
-
-    // guard !isPublished else {
-    //   return log("Already published, ignoring: \(state)")
-    // }
 
     switch normalizedOutput {
     case let .failed(result):
-      stderrCallbacks.forEach { $0(result) }
+      stderrCallbacks.forEach { callback in
+        callback(result)
+      }
     case let .succeeded(result):
-      stdoutCallbacks.forEach { $0(result) }
+      stdoutCallbacks.forEach { callback in
+        callback(result)
+      }
     }
 
     state.update(state: .published)
@@ -224,8 +174,8 @@ public class Execution: Log, Mutex {
     return (
       process.terminationReason,
       Int(process.terminationStatus),
-      stdoutBuffer.everything,
-      stderrBuffer.everything
+      stdout?.output,
+      stderr?.output
     )
   }
 
@@ -272,4 +222,6 @@ public class Execution: Log, Mutex {
   private var currentEnv: [String: String] {
     return ProcessInfo.processInfo.environment
   }
+
+  deinit { terminate() }
 }
