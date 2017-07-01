@@ -1,21 +1,24 @@
 import Foundation
 
+public typealias Env = [String: String]
 public class Script: Log {
   private var execution: Execution?
   private let path: String
   private let args: [String]
+  private let env: Env
   private let bashPath = "/bin/bash"
   public weak var delegate: Scriptable?
   internal let id: String
   private let queue = DispatchQueue(label: "Script", qos: .background, target: .main)
 
-  public convenience init(path: String, args: [String] = [], delegate: Scriptable, autostart: Bool = false) {
-    self.init(path: path, args: args)
+  public convenience init(path: String, args: [String] = [], env: Env = Env(), delegate: Scriptable, autostart: Bool = false) {
+    self.init(path: path, args: args, env: env)
     self.delegate = delegate
     if autostart { start() }
   }
 
-  public init(path: String, args: [String] = []) {
+  public init(path: String, args: [String] = [], env: Env = Env()) {
+    self.env = Script.env(from: env)
     self.path = path
     self.args = args
     self.id = path.split("/").last ?? "??"
@@ -57,7 +60,7 @@ public class Script: Log {
   }
 
   private func setup() {
-    execution = Execution(path: path, args: args, id: id)
+    execution = Execution(path: path, args: args, env: env, id: id)
 
     execution?.onStreamedSuccess { [weak self] output in
       self?.queue.async { [weak self] in
@@ -87,5 +90,9 @@ public class Script: Log {
         self?.succeeded(result)
       }
     }
+  }
+
+  static private func env(from env: Env) -> Env {
+    return ProcessInfo.processInfo.environment + env
   }
 }

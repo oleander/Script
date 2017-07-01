@@ -23,17 +23,19 @@ public class Execution: Log {
   private let stderrPipe = Pipe()
   private var stdout: Handler?
   private var stderr: Handler?
+  private let env: Env
   private let path: String
   internal let id: String
 
-  public init(path: String, args: [String] = [], id: String) {
+  public init(path: String, args: [String] = [], env: Env = Env(), id: String) {
     self.args = args
     self.path = path
+    self.env = env
     self.id = id
 
     process.launchPath = bashPath
     process.arguments = arguments
-    process.environment = currentEnv
+    process.environment = env
     process.standardOutput = stdoutPipe
     process.standardError = stderrPipe
 
@@ -217,10 +219,6 @@ public class Execution: Log {
 
   private var arguments: [String] {
     return ["-c", (escape(path) + " " + namedArgs.joined(separator: " "))] + args
-  }
-
-  private var currentEnv: [String: String] {
-    return ProcessInfo.processInfo.environment
   }
 
   deinit { terminate() }
