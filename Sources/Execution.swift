@@ -39,8 +39,8 @@ public class Execution: Log {
     process.standardOutput = stdoutPipe
     process.standardError = stderrPipe
 
-    self.stdout = Handler(stdoutPipe.fileHandleForReading)
-    self.stderr = Handler(stderrPipe.fileHandleForReading)
+    self.stdout = Handler(stdoutPipe.fileHandleForReading, delimiter: "~~~\n")
+    self.stderr = Handler(stderrPipe.fileHandleForReading, delimiter: "\n")
 
     self.stdout?.onPiece { [weak self] piece in
       for callback in (self?.streamedStdoutCallbacks ?? []) {

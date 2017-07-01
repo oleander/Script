@@ -2,7 +2,7 @@ import Foundation
 
 class Handler: Log {
   private var data = Data()
-  private var buffer = Buffer()
+  private let queue = DispatchQueue(label: "Handler", qos: .background, target: .main)
   private weak var handler: FileHandle?
   private var completeCallbacks = [(String) -> Void]()
   private var pieceCallbacks = [(String) -> Void]()
@@ -11,11 +11,12 @@ class Handler: Log {
   private var isClosed: Bool { return state.isClosed }
   private var isStream: Bool { return state.isStream }
   internal let id = "Handler"
-  private let queue = DispatchQueue(label: "Handler", qos: .background, target: .main)
   private var obs: NSObjectProtocol?
+  private let buffer: Buffer
 
-  init(_ handler: FileHandle) {
+  init(_ handler: FileHandle, delimiter: String) {
     self.handler = handler
+    self.buffer = Buffer(withDelimiter: delimiter)
     self.obs = NotificationCenter.default.addObserver(
       forName: .NSFileHandleDataAvailable,
       object: handler,

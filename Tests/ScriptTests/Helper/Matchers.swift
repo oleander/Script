@@ -142,7 +142,7 @@ func execute(path: String, args: [String] = [], autostart: Bool = true) -> (Fake
 // }
 
 func crash(_ failure: Script.Failure) -> Predicate<(String, [String])> {
-  return that(in: [.fail(failure)], message: "fail as not found")
+  return that5(in: [failure], message: "fail as not found")
 }
 
 func lift<T, U>(_ that: Predicate<U>, block: @escaping (T) -> U) -> Predicate<T> {
@@ -185,14 +185,22 @@ func succeed(with messages: [String]) -> Predicate<(String, [String])> {
 
 // expect(script).toEventually(exit(message: "output", andStatusCode: 2))
 func exit(with message: String, andStatusCode status: Int) -> Predicate<(String, [String])> {
-  return that(
-    in: [.fail(.generic(message, status))],
+  // return that5(in: [failure], message: "fail as not found")
+  return that5(
+    in: [.generic(message, status)],
     message: "exit with output \(message.inspected) and status code \(status)"
   )
 }
 
 func that(in expected: [Std], message: String) -> Predicate<(String, [String])> {
   return lift(that2(in: expected, message: message)) { param in
+    let (path, args) = param
+    return (path, args, true)
+  }
+}
+
+func that5(in expected: [Script.Failure], message: String) -> Predicate<(String, [String])> {
+  return lift(that6(in: expected, message: message)) { param in
     let (path, args) = param
     return (path, args, true)
   }
@@ -223,6 +231,42 @@ func that2(in expected: [Std], message: String) -> Predicate<(String, [String], 
     }
 
     let result = delegate.result
+    let res = result.enumerated().reduce(true) { acc, state in
+      let (index, status) = state
+      switch expected.get(index) {
+      case let .some(exp):
+        return exp == status
+      case .none:
+        return acc
+      }
+    }
+
+    if res && result.count == expected.count {
+      script.stop()
+      return .bool(true, result)
+    }
+
+    return .bool(false, result)
+  }
+}
+
+func that6(in expected: [Script.Failure], message: String) -> Predicate<(String, [String], Bool)> {
+  if expected.isEmpty { preconditionFailure("Arg can't be empty") }
+
+  var delegate: FakeScriptable!
+  var script: Script!
+  var hasInit = false
+
+  return verify(message) { params in
+    let (path, args, autostart) = params
+    if !hasInit {
+      let (d, s)  = execute(path: path, args: args, autostart: autostart)
+      delegate = d
+      script = s
+      hasInit = true
+    }
+
+    let result = delegate.stderr
     let res = result.enumerated().reduce(true) { acc, state in
       let (index, status) = state
       switch expected.get(index) {
