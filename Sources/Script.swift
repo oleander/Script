@@ -3,8 +3,8 @@ import Foundation
 public typealias Env = [String: String]
 public class Script: Log {
   private var execution: Execution?
-  private let path: String
-  private let args: [String]
+  public let path: String
+  public let args: [String]
   private let env: Env
   private let bashPath = "/bin/bash"
   public weak var delegate: Scriptable?
